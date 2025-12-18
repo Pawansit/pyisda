@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0", "pandas", "matplotlib", "numpy", "requests"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ISDAAPI"
+version = "1.0"
+authors = [
+  { name="Your Name", email="your.email@example.com" },
+]
+description = "A short description of your project."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.scripts]
+#your-command = "your_package_name.your_script:main" # If your script has an entry point function named 'main'
