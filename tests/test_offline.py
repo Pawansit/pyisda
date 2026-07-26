@@ -80,6 +80,27 @@ def test_merge_mutations_with_pdb_map():
     assert list(merged["pdb_residue"]) == [110, 120]
 
 
+def test_merge_mutations_with_pdb_map_after_boolean_filter():
+    # Regression test: residue_map_df sliced via boolean indexing (e.g.
+    # df[df['pdb_auth_chain'] == chain_id]) used to raise
+    # `KeyError: 'Position'` during the merge, because renaming the first
+    # column via `.columns.values[0] = ...` corrupts pandas' internal
+    # column-lookup index on a filtered slice even though `.columns`
+    # itself looks correct.
+    mutation_df = pd.DataFrame({"Position": ["1", "2", "4"], "Alt_AA": ["Gly", "Trp", "Ala"]})
+    residue_map_df = pd.DataFrame({
+        "unp_residue": ["1", "2", "3", "4", "5"],
+        "pdb_residue": ["1", "2", "3", "4", "5"],
+        "pdb_auth_chain": ["A", "A", "B", "A", "B"],
+        "pdb_chain": ["C", "C", "D", "C", "D"],
+    })
+    filtered = residue_map_df[residue_map_df["pdb_auth_chain"] == "A"]
+
+    merged = ibdc.merge_mutations_with_pdb_map(mutation_df, filtered)
+    assert list(merged["Position"]) == ["1", "2", "4"]
+    assert list(merged["Alt_AA"]) == ["Gly", "Trp", "Ala"]
+
+
 def test_plot_structural_coverage_runs():
     import matplotlib
     matplotlib.use("Agg")

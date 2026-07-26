@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyisda"
-version = "1.1.0"
+version = "0.1.0"
 description = "Local toolkit for protein structural analysis via the IBDC ISDA API: sequence/protein lookup, UniProt<->PDB residue mapping, mutation retrieval & analysis, ChimeraX mutation scripts, and SASA calculation."
 readme = "README.md"
 requires-python = ">=3.9"

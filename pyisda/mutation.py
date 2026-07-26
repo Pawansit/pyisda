@@ -210,12 +210,13 @@ def merge_mutations_with_pdb_map(
             (must contain a `Position` column).
         residue_map_df: Output of `mapper.get_residue_map` as a DataFrame,
             whose first column will be renamed to `Position` for the join.
+            Works whether `residue_map_df` is the full mapping or a
+            filtered/sliced subset of it (e.g. one chain).
 
     Returns:
         The merged DataFrame.
     """
-    residue_map_df = residue_map_df.copy()
-    residue_map_df.columns.values[0] = "Position"
+    residue_map_df = residue_map_df.rename(columns={residue_map_df.columns[0]: "Position"})
     return pd.merge(mutation_df, residue_map_df, on="Position")
 
 
