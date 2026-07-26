@@ -1,0 +1,8 @@
+requests>=2.28
+pandas>=1.5
+numpy>=1.23
+matplotlib>=3.6
+# Optional, only needed for pyisda.sasa:
+# biotite>=0.38
+# Optional, only needed for pyisda.interactive (HTML/Plotly plots):
+# plotly>=5.18

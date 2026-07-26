@@ -1,3 +1,26 @@
+Metadata-Version: 2.4
+Name: pyisda
+Version: 1.1.0
+Summary: Local toolkit for protein structural analysis via the IBDC ISDA API: sequence/protein lookup, UniProt<->PDB residue mapping, mutation retrieval & analysis, ChimeraX mutation scripts, and SASA calculation.
+Author: Pawan
+License: MIT
+Keywords: bioinformatics,structural-biology,uniprot,pdb,isda,ibdc,sasa,mutation
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.28
+Requires-Dist: pandas>=1.5
+Requires-Dist: numpy>=1.23
+Requires-Dist: matplotlib>=3.6
+Provides-Extra: sasa
+Requires-Dist: biotite>=0.38; extra == "sasa"
+Provides-Extra: interactive
+Requires-Dist: plotly>=5.18; extra == "interactive"
+Provides-Extra: all
+Requires-Dist: biotite>=0.38; extra == "all"
+Requires-Dist: plotly>=5.18; extra == "all"
+Dynamic: license-file
+
 # pyisda
 
 A local, pip-installable Python toolkit for protein structural analysis built

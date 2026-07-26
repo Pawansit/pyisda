@@ -1,0 +1,14 @@
+requests>=2.28
+pandas>=1.5
+numpy>=1.23
+matplotlib>=3.6
+
+[all]
+biotite>=0.38
+plotly>=5.18
+
+[interactive]
+plotly>=5.18
+
+[sasa]
+biotite>=0.38

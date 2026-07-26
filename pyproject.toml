@@ -1,21 +1,28 @@
 [build-system]
-requires = ["setuptools>=61.0", "pandas", "matplotlib", "numpy", "requests"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ISDAAPI"
-version = "1.0"
-authors = [
-  { name="Your Name", email="your.email@example.com" },
-]
-description = "A short description of your project."
+name = "pyisda"
+version = "1.1.0"
+description = "Local toolkit for protein structural analysis via the IBDC ISDA API: sequence/protein lookup, UniProt<->PDB residue mapping, mutation retrieval & analysis, ChimeraX mutation scripts, and SASA calculation."
 readme = "README.md"
-requires-python = ">=3.10"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Pawan" }]
+keywords = ["bioinformatics", "structural-biology", "uniprot", "pdb", "isda", "ibdc", "sasa", "mutation"]
+
+dependencies = [
+    "requests>=2.28",
+    "pandas>=1.5",
+    "numpy>=1.23",
+    "matplotlib>=3.6",
 ]
 
-[project.scripts]
-#your-command = "your_package_name.your_script:main" # If your script has an entry point function named 'main'
+[project.optional-dependencies]
+sasa = ["biotite>=0.38"]
+interactive = ["plotly>=5.18"]
+all = ["biotite>=0.38", "plotly>=5.18"]
+
+[tool.setuptools.packages.find]
+include = ["pyisda*"]
