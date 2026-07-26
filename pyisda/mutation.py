@@ -208,15 +208,41 @@ def merge_mutations_with_pdb_map(
     Args:
         mutation_df: Output of `get_mutation_table` / `get_computational_mutations`
             (must contain a `Position` column).
-        residue_map_df: Output of `mapper.get_residue_map` as a DataFrame,
-            whose first column will be renamed to `Position` for the join.
-            Works whether `residue_map_df` is the full mapping or a
-            filtered/sliced subset of it (e.g. one chain).
+        residue_map_df: Output of `mapper.get_residue_map` (or a
+            filtered/sliced subset of it, e.g. one chain) — must contain
+            an `unp_residue` column, which is renamed to `Position` for
+            the join.
 
     Returns:
         The merged DataFrame.
+
+    Raises:
+        ValueError: if `residue_map_df` doesn't look like
+            `get_residue_map` output (missing `unp_residue`, or it already
+            has a `Position` column) — most often because a mutation
+            table was passed by mistake. For combining two mutation
+            tables (e.g. experimental ClinVar mutations with
+            computational/AlphaMissense predictions), use
+            `merge_experimental_with_computational` instead.
     """
-    residue_map_df = residue_map_df.rename(columns={residue_map_df.columns[0]: "Position"})
+    if "unp_residue" not in residue_map_df.columns:
+        raise ValueError(
+            "residue_map_df must contain an 'unp_residue' column (i.e. it should "
+            "be get_residue_map() output, or a filtered slice of it). "
+            f"Got columns: {list(residue_map_df.columns)}. If you're trying to "
+            "combine two mutation tables (e.g. experimental ClinVar mutations "
+            "with computational/AlphaMissense predictions), use "
+            "merge_experimental_with_computational(...) instead."
+        )
+    if "Position" in residue_map_df.columns:
+        raise ValueError(
+            "residue_map_df already has a 'Position' column, so renaming "
+            "'unp_residue' to 'Position' would create a duplicate column and "
+            "break the merge. This usually means the wrong DataFrame was passed "
+            "— did you mean merge_experimental_with_computational(...)?"
+        )
+
+    residue_map_df = residue_map_df.rename(columns={"unp_residue": "Position"})
     return pd.merge(mutation_df, residue_map_df, on="Position")
 
 

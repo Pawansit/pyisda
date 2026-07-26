@@ -101,6 +101,23 @@ def test_merge_mutations_with_pdb_map_after_boolean_filter():
     assert list(merged["Alt_AA"]) == ["Gly", "Trp", "Ala"]
 
 
+def test_merge_mutations_with_pdb_map_rejects_wrong_dataframe():
+    # Regression test: passing a computational-mutations-style DataFrame
+    # (which already has its own 'Position' column, no 'unp_residue')
+    # instead of get_residue_map() output used to fail deep inside pandas
+    # with a cryptic "column label 'Position' is not unique" ValueError,
+    # because the function blindly renamed whatever the *first* column
+    # was to 'Position'. It should now fail immediately with a clear,
+    # actionable message instead.
+    annotated_mutations = pd.DataFrame({"Position": ["10"], "Alt_AA": ["Gly"]})
+    comp_predictions = pd.DataFrame({
+        "protein_variant": ["A10G"], "Ref_AA": ["A"], "Position": ["10"], "Alt_AA": ["G"],
+    })
+
+    with pytest.raises(ValueError, match="merge_experimental_with_computational"):
+        ibdc.merge_mutations_with_pdb_map(annotated_mutations, comp_predictions)
+
+
 def test_plot_structural_coverage_runs():
     import matplotlib
     matplotlib.use("Agg")
