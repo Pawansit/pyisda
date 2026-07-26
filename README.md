@@ -89,8 +89,8 @@ coverage = ibdc.get_structure_details("P00533", include_pdb_records=True)
 # Entry-level PDB summary
 pdb_info = ibdc.get_pdb_summary("6q0j", additional_outputs="micromolecular_data")
 
-# UniProt <-> PDB residue mapping
-residue_map = ibdc.get_residue_map("P00533", "1m17")
+# UniProt <-> PDB residue mapping, filtered to one chain directly
+residue_map = ibdc.get_residue_map("P00533", "1m17", auth_chain_id="A")
 
 # Mutation retrieval + analysis
 clinvar_df = ibdc.get_mutation_table("P00533", source="clinvar")
@@ -100,6 +100,39 @@ summary = ibdc.get_mutation_summary(clinvar_df)
 # SASA (requires the `sasa` extra / biotite installed)
 # Downloads the structure as .cif from the ISDA API by default
 result = ibdc.calculate_sasa_for_chain("6gel", "A")
+```
+
+### Worked example: focusing on a binding-site residue set
+
+Combine experimental (ClinVar) and computational (AlphaMissense-style)
+mutation sources into one table, then narrow it down to a specific
+residue set — e.g. a ligand-binding site:
+
+```python
+import pyisda as ibdc
+
+uniprot_id = "P00533"
+
+# 1. Structural coverage -> pick the best-covered PDB + its chain
+coverage = ibdc.get_structure_details(uniprot_id, include_pdb_records=True)
+best_pdb = coverage["highest_coverage_pdb_id"]
+chain_id = coverage["highest_coverage_auth_chain"]
+
+# 2. Residue map, filtered to that chain directly
+residue_map = ibdc.get_residue_map(uniprot_id, best_pdb, auth_chain_id=chain_id)
+
+# 3. Experimental + computational mutation sources
+clinvar_df = ibdc.get_mutation_table(uniprot_id, source="clinvar", record_type="full")
+annotated_mutations = ibdc.analyze_mutation_properties(clinvar_df)
+comp_predictions = ibdc.get_computational_mutations(uniprot_id)
+
+# 4. Attach a computational pathogenicity prediction to each experimental
+#    mutation, matched on the exact substitution (position + alt AA)
+combined = ibdc.merge_experimental_with_computational(annotated_mutations, comp_predictions)
+
+# 5. Narrow down to a residue set of interest, e.g. ligand-binding-site residues
+binding_site_residues = [790, 793, 797, 855, 858]  # example UniProt positions
+focus_set = ibdc.subset_by_positions(combined, binding_site_residues)
 ```
 
 ---
@@ -133,7 +166,7 @@ mutated_seq = ibdc.mutate_sequence(seq_record, muts)
 
 | Function | Description |
 |---|---|
-| `get_residue_map(uniprot_id, pdb_id)` | List of `{unp_residue, pdb_residue, pdb_auth_chain, pdb_chain}` dicts mapping UniProt numbering to PDB numbering for one PDB entry |
+| `get_residue_map(uniprot_id, pdb_id, auth_chain_id=None)` | List of `{unp_residue, pdb_residue, pdb_auth_chain, pdb_chain}` dicts mapping UniProt numbering to PDB numbering for one PDB entry. Pass `auth_chain_id` (e.g. `"A"`) to filter to that chain directly — records for other chains are skipped before the map is even built, equivalent to but more efficient than fetching everything and then `df[df['pdb_auth_chain'] == chain_id]` |
 
 ### `pyisda.mutation`
 
@@ -144,7 +177,9 @@ mutated_seq = ibdc.mutate_sequence(seq_record, muts)
 | `filter_by_significance(df, pattern, case=False)` | Regex filter on `Clinical Significance` |
 | `analyze_mutation_properties(df, ...)` | Adds hydrophobic/hydrophilic property columns + change-type label |
 | `get_mutation_summary(df, top_n=10)` | Count, significance distribution, consequence-type distribution, top mutation hotspots |
-| `merge_mutations_with_pdb_map(mutation_df, residue_map_df)` | Joins a mutation table to `get_residue_map` output on residue position |
+| `merge_mutations_with_pdb_map(mutation_df, residue_map_df)` | Joins a mutation table to `get_residue_map` output on residue position. Works even when `residue_map_df` is a filtered slice (e.g. one chain) |
+| `merge_experimental_with_computational(experimental_df, computational_df, position_col="Position", alt_aa_col="Alt_AA", how="left")` | Attaches AlphaMissense-style computational pathogenicity predictions to each experimental/clinical mutation, joined on the exact substitution (position + alt AA). Handles the 1-letter vs. 3-letter `Alt_AA` mismatch between `get_mutation_table` and `get_computational_mutations` automatically |
+| `subset_by_positions(df, positions, position_col="Position")` | Filters any mutation/merged table down to a specific set of residue positions — e.g. a ligand-binding-site residue list — to focus downstream analysis on that region |
 | `plot_mutation_matrix(df, ax=None)` | Position × Alt_AA heatmap of mutation counts |
 
 ### `pyisda.sasa`

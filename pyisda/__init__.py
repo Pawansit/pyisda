@@ -38,6 +38,8 @@ from .mutation import (
     analyze_mutation_properties,
     get_mutation_summary,
     merge_mutations_with_pdb_map,
+    merge_experimental_with_computational,
+    subset_by_positions,
     plot_mutation_matrix,
 )
 from .sasa import calculate_sasa_for_chain, fetch_structure_cif, SASAResult
@@ -74,6 +76,8 @@ __all__ = [
     "analyze_mutation_properties",
     "get_mutation_summary",
     "merge_mutations_with_pdb_map",
+    "merge_experimental_with_computational",
+    "subset_by_positions",
     "plot_mutation_matrix",
     "calculate_sasa_for_chain",
     "fetch_structure_cif",

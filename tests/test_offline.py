@@ -295,6 +295,81 @@ def test_get_pdb_summary_returns_none_on_failure(monkeypatch):
     assert structure_mod.get_pdb_summary("6q0j") is None
 
 
+def test_get_residue_map_filters_by_auth_chain_id(monkeypatch):
+    import pyisda.mapper as mapper_mod
+
+    fake_response = {
+        "structuralMapping": {
+            "pdb_data": [
+                {"PDB": "1M17", "UNIPROT_START": 1, "UNIPROT_END": 3, "PDB_START": 1,
+                 "AUTH_CHAIN": "A", "PDB_CHAIN": "A"},
+                {"PDB": "1M17", "UNIPROT_START": 1, "UNIPROT_END": 3, "PDB_START": 1,
+                 "AUTH_CHAIN": "B", "PDB_CHAIN": "B"},
+            ]
+        }
+    }
+
+    monkeypatch.setattr(mapper_mod, "get_json", lambda url, **kw: fake_response)
+
+    full_map = ibdc.get_residue_map("P00533", "1m17")
+    assert {r["pdb_auth_chain"] for r in full_map} == {"A", "B"}
+
+    chain_a_only = ibdc.get_residue_map("P00533", "1m17", auth_chain_id="A")
+    assert {r["pdb_auth_chain"] for r in chain_a_only} == {"A"}
+    assert len(chain_a_only) == 3
+
+
+def test_merge_experimental_with_computational():
+    experimental_df = pd.DataFrame({
+        "Position": ["10", "20"],
+        "Alt_AA": ["Gly", "Trp"],   # 3-letter, as returned by get_mutation_table
+        "Ref_AA": ["Ala", "Ser"],
+        "Clinical Significance": ["Pathogenic", "Benign"],
+    })
+    computational_df = pd.DataFrame({
+        "Position": ["10", "20", "30"],
+        "Alt_AA": ["G", "W", "A"],   # 1-letter, as returned by get_computational_mutations
+        "Ref_AA": ["A", "S", "M"],
+        "am_pathogenicity": [0.9, 0.1, 0.5],
+    })
+
+    merged = ibdc.merge_experimental_with_computational(experimental_df, computational_df)
+
+    assert list(merged["Position"]) == ["10", "20"]
+    assert list(merged["Alt_AA"]) == ["G", "W"]  # canonical 1-letter after normalization
+    assert list(merged["am_pathogenicity"]) == [0.9, 0.1]
+    assert "Ref_AA_experimental" in merged.columns
+    assert "Ref_AA_computational" in merged.columns
+
+
+def test_merge_experimental_with_computational_inner_join_drops_unmatched():
+    experimental_df = pd.DataFrame({"Position": ["10", "99"], "Alt_AA": ["Gly", "Trp"]})
+    computational_df = pd.DataFrame({"Position": ["10"], "Alt_AA": ["G"], "score": [0.5]})
+
+    merged = ibdc.merge_experimental_with_computational(experimental_df, computational_df, how="inner")
+    assert len(merged) == 1
+    assert merged.iloc[0]["Position"] == "10"
+
+
+def test_merge_experimental_with_computational_missing_column_raises():
+    experimental_df = pd.DataFrame({"Position": ["10"]})  # missing Alt_AA
+    computational_df = pd.DataFrame({"Position": ["10"], "Alt_AA": ["G"]})
+    with pytest.raises(ValueError):
+        ibdc.merge_experimental_with_computational(experimental_df, computational_df)
+
+
+def test_subset_by_positions():
+    df = pd.DataFrame({"Position": ["10", "20", "30"], "Alt_AA": ["G", "T", "A"]})
+    subset = ibdc.subset_by_positions(df, [10, 30])
+    assert list(subset["Position"]) == ["10", "30"]
+
+
+def test_subset_by_positions_missing_column_raises():
+    df = pd.DataFrame({"Alt_AA": ["G"]})
+    with pytest.raises(ValueError):
+        ibdc.subset_by_positions(df, [10])
+
+
 def test_generate_mutated_structure_script(tmp_path):
     mt = pd.DataFrame({
         "pdb_auth_chain": ["A", "A", "B"],

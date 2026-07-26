@@ -27,7 +27,7 @@ class SASAResult(NamedTuple):
 def fetch_structure_cif(pdb_id: str, output_dir: str = ".") -> str:
     """
     Download a structure's CIF file from the IBDC ISDA download endpoint:
-    ``{ISDA_BASE_URL}/download/<pdb_id>.cif``.
+    ``{ISDA_BASE_URL}/download.<pdb_id>.cif``.
 
     Args:
         pdb_id: 4-character PDB accession, e.g. "6gel" (case-insensitive).
@@ -42,7 +42,7 @@ def fetch_structure_cif(pdb_id: str, output_dir: str = ".") -> str:
             empty response body.
     """
     pdb_id_lower = pdb_id.lower()
-    url = f"{ISDA_BASE_URL}/download/{pdb_id_lower}.cif"
+    url = f"{ISDA_BASE_URL}/download.{pdb_id_lower}.cif"
     os.makedirs(output_dir, exist_ok=True)
     dest_path = os.path.join(output_dir, f"{pdb_id_lower}.cif")
     return download_file(url, dest_path)

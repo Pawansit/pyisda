@@ -10,7 +10,7 @@ corrected implementation: `get_computational_mutations`.
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -218,6 +218,126 @@ def merge_mutations_with_pdb_map(
     """
     residue_map_df = residue_map_df.rename(columns={residue_map_df.columns[0]: "Position"})
     return pd.merge(mutation_df, residue_map_df, on="Position")
+
+
+def _normalize_alt_aa(series: pd.Series) -> pd.Series:
+    """Map a mixed 1-/3-letter Alt_AA column to single-letter codes for joining."""
+    from .protein import AA_3TO1
+
+    def _convert(value):
+        if pd.isna(value):
+            return value
+        value = str(value)
+        if len(value) == 1:
+            return value.upper()
+        return AA_3TO1.get(value, value)
+
+    return series.apply(_convert)
+
+
+def merge_experimental_with_computational(
+    experimental_df: pd.DataFrame,
+    computational_df: pd.DataFrame,
+    position_col: str = "Position",
+    alt_aa_col: str = "Alt_AA",
+    how: str = "left",
+    suffixes: Tuple[str, str] = ("_experimental", "_computational"),
+) -> pd.DataFrame:
+    """
+    Attach computational (e.g. AlphaMissense) pathogenicity predictions to
+    each experimentally-observed mutation, so both sources are visible
+    for the same substitution side by side.
+
+    Joins on residue position + substituted amino acid. Since
+    `get_mutation_table` reports `Alt_AA` as a 3-letter code (e.g. "Gly")
+    and `get_computational_mutations` reports it as 1-letter (e.g. "G"),
+    both are normalized to 1-letter internally before joining — the
+    original `Position`/`Alt_AA` values from each side are dropped in
+    favor of one canonical `Position`/`Alt_AA` pair in the result (they
+    always agree by construction of the join), while every other
+    overlapping column (e.g. `Ref_AA`) is kept from both sides, suffixed
+    per `suffixes`.
+
+    Args:
+        experimental_df: Output of `get_mutation_table` (or any DataFrame
+            with `position_col`/`alt_aa_col` columns).
+        computational_df: Output of `get_computational_mutations` (or any
+            DataFrame with `position_col`/`alt_aa_col` columns).
+        position_col: Residue-position column name, present in both inputs.
+        alt_aa_col: Substituted-amino-acid column name, present in both
+            inputs (mixed 1-/3-letter codes are handled automatically).
+        how: Join type, passed to `pandas.merge` — "left" (default) keeps
+            every experimental mutation and attaches a computational
+            prediction where one exists (NaN otherwise); use "inner" to
+            keep only mutations with both experimental and computational
+            support.
+        suffixes: Suffixes applied to other overlapping columns from the
+            two inputs.
+
+    Returns:
+        The merged DataFrame with canonical `Position`/`Alt_AA` columns.
+    """
+    if experimental_df is None or experimental_df.empty:
+        logger.warning("merge_experimental_with_computational: experimental_df is empty or None.")
+        return experimental_df
+    if computational_df is None or computational_df.empty:
+        logger.warning("merge_experimental_with_computational: computational_df is empty or None.")
+        return experimental_df
+
+    for df_, name in ((experimental_df, "experimental_df"), (computational_df, "computational_df")):
+        missing = [c for c in (position_col, alt_aa_col) if c not in df_.columns]
+        if missing:
+            raise ValueError(f"{name} is missing required column(s): {missing}")
+
+    left = experimental_df.copy()
+    right = computational_df.copy()
+
+    left["_join_position"] = left[position_col].astype(str)
+    right["_join_position"] = right[position_col].astype(str)
+    left["_join_alt_aa"] = _normalize_alt_aa(left[alt_aa_col])
+    right["_join_alt_aa"] = _normalize_alt_aa(right[alt_aa_col])
+
+    merged = pd.merge(left, right, on=["_join_position", "_join_alt_aa"], how=how, suffixes=suffixes)
+
+    # Drop the original (now-suffixed, redundant-by-construction) position/
+    # Alt_AA columns from both sides in favor of the canonical join columns.
+    redundant = [f"{position_col}{suffixes[0]}", f"{position_col}{suffixes[1]}",
+                 f"{alt_aa_col}{suffixes[0]}", f"{alt_aa_col}{suffixes[1]}"]
+    merged = merged.drop(columns=[c for c in redundant if c in merged.columns])
+    merged = merged.rename(columns={"_join_position": position_col, "_join_alt_aa": alt_aa_col})
+
+    return merged
+
+
+def subset_by_positions(
+    df: pd.DataFrame,
+    positions: Sequence[Union[int, str]],
+    position_col: str = "Position",
+) -> pd.DataFrame:
+    """
+    Filter a mutation (or merged mutation) DataFrame down to a specific
+    set of residue positions — e.g. a ligand-binding-site or active-site
+    residue list — to focus downstream analysis on that region.
+
+    Args:
+        df: Any DataFrame with a residue-position column, such as
+            `get_mutation_table`, `get_computational_mutations`, or
+            `merge_experimental_with_computational` output.
+        positions: Residue positions to keep (ints or strings; compared
+            as strings so "12" and 12 both match).
+        position_col: Column to filter on. Note that after
+            `merge_mutations_with_pdb_map` this is still `"Position"`,
+            but you may want `"pdb_residue"` instead if filtering by
+            PDB-numbered binding-site residues.
+
+    Returns:
+        A filtered copy of `df` with a reset index.
+    """
+    if position_col not in df.columns:
+        raise ValueError(f"'{position_col}' column not found in DataFrame.")
+
+    wanted = {str(p) for p in positions}
+    return df[df[position_col].astype(str).isin(wanted)].reset_index(drop=True)
 
 
 def plot_mutation_matrix(df: pd.DataFrame, ax=None):
