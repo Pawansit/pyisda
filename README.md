@@ -128,14 +128,14 @@ mutated_seq = ibdc.mutate_sequence(seq_record, muts)
 | Function | Description |
 |---|---|
 | `get_structure_details(uniprot_id, include_pdb_records=False)` | PDB/chain counts and the highest-coverage structure; pass `include_pdb_records=True` for the full per-PDB record list |
-| `get_pdb_summary(pdb_id, additional_outputs=None)` | Entry-level summary for a single PDB ID (`{ISDA_BASE_URL}/pdb_summary/<pdb_id>/)`.`additional_outputs`  also accepts a list, joined with commas and cover the following `experiment, publication, micromolecular_data, interactions` |
+| `get_pdb_summary(pdb_id, additional_outputs=None)` | Entry-level summary for a single PDB ID (`{ISDA_BASE_URL}/pdb_summary/<pdb_id>/)`.`additional_outputs`  also accepts a list, joined with commas and cover the following `experiment, publication, micromolecular_data, interactions`. |
 | `generate_mutated_structure_script(mutation_table, pdb_id, auth_chain_id, output_dir=".")` | Writes a ChimeraX `.cxc` script that opens `<pdb_id>.cif`, applies `swapaa` mutations for the given chain, and saves `<pdb_id>_mutated_structure.cif` |
 
 ### `pyisda.mapper`
 
 | Function | Description |
 |---|---|
-| `get_residue_map(uniprot_id, pdb_id, auth_chain_id=None)` | List of `{unp_residue, pdb_residue, pdb_auth_chain, pdb_chain}` dicts mapping UniProt numbering to PDB numbering for one PDB entry. Pass `auth_chain_id` (e.g. `"A"`) to filter to that chain directly — records for other chains are skipped before the map is even built, equivalent to but more efficient than fetching everything and then `df[df['pdb_auth_chain'] == chain_id]` |
+| `get_residue_map(uniprot_id, pdb_id, auth_chain_id=None)` | List of `{unp_residue, pdb_residue, pdb_auth_chain, pdb_chain}` dicts mapping UniProt numbering to PDB numbering for one PDB entry. Pass `auth_chain_id` (e.g. `"A"`) to filter to that chain directly. |
 
 ### `pyisda.mutation`
 
