@@ -128,7 +128,7 @@ mutated_seq = ibdc.mutate_sequence(seq_record, muts)
 | Function | Description |
 |---|---|
 | `get_structure_details(uniprot_id, include_pdb_records=False)` | PDB/chain counts and the highest-coverage structure; pass `include_pdb_records=True` for the full per-PDB record list |
-| `get_pdb_summary(pdb_id, additional_outputs=None)` | Entry-level summary for a single PDB ID (`{ISDA_BASE_URL}/pdb_summary/<pdb_id>/`)`. `additional_outputs` also accepts a list, joined with commas |
+| `get_pdb_summary(pdb_id, additional_outputs=None)` | Entry-level summary for a single PDB ID (`{ISDA_BASE_URL}/pdb_summary/<pdb_id>/`)`. `additional_outputs` also accepts a list, joined with commas and cover the following `experiment, publication, micromolecular_data, interactions` |
 | `generate_mutated_structure_script(mutation_table, pdb_id, auth_chain_id, output_dir=".")` | Writes a ChimeraX `.cxc` script that opens `<pdb_id>.cif`, applies `swapaa` mutations for the given chain, and saves `<pdb_id>_mutated_structure.cif` |
 
 ### `pyisda.mapper`
