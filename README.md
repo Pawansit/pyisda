@@ -67,8 +67,7 @@ clinvar_df = ibdc.get_mutation_table("P00533", source="clinvar")
 annotated = ibdc.analyze_mutation_properties(clinvar_df)
 summary = ibdc.get_mutation_summary(clinvar_df)
 
-# SASA (requires the `sasa` extra / biotite installed)
-# Downloads the structure as .cif from the ISDA API by default
+# Calculate per residue Solvent Accessible Surface Area (SASA)
 result = ibdc.calculate_sasa_for_chain("6gel", "A")
 ```
 
@@ -116,7 +115,7 @@ focus_set = ibdc.subset_by_positions(combined, binding_site_residues)
 | `get_protein_details(uniprot_id)` | Organism, gene name(s)/synonyms, structural record count, sequence length |
 | `get_sequence(uniprot_id)` | Raw sequence string, length, molecular weight |
 | `mutate_sequence(sequence_record, mutations)` | Apply a `Position`/`Alt_AA` (3-letter code) mutation table to a sequence, returns the mutated sequence string |
-| `one_letter_to_three(aa)` / `three_letter_to_one(aa)` | Amino-acid code conversion helpers |
+
 
 ```python
 seq_record = ibdc.get_sequence("P00533")
