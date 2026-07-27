@@ -251,17 +251,6 @@ telling you to install the `interactive` extra.
 
 ---
 
-## Configuration
-
-The ISDA base URL defaults to `https://ibdc.dbt.gov.in/isda/api` (the
-current domain as of July 2026) and is centralized and overridable, e.g. to
-point at a staging environment or roll back to the old host:
-
-```python
-import pyisda as ibdc
-ibdc.config.ISDA_BASE_URL = "https://staging.example.org/isda/api"
-```
-
 ## Logging
 
 All modules log through the `"pyisda"` logger instead of `print()`.
@@ -271,18 +260,6 @@ Enable it in your own scripts/notebooks with:
 import logging
 logging.basicConfig(level=logging.INFO)  # or logging.WARNING
 ```
-
-By default (no `basicConfig` call), the package stays silent — it attaches
-a `NullHandler` so it won't print anything unless you opt in.
-
-## Error handling
-
-Every network-backed function follows the same contract: on request
-failure (timeout, connection error, HTTP error, bad JSON) it logs a warning
-and returns `None` — it never raises. Internally, request failures are
-raised as `pyisda.ISDARequestError` and caught at each public
-function's boundary, so if you're extending the package yourself you can
-catch that exception directly instead of parsing log output.
 
 ---
 
@@ -304,30 +281,6 @@ end-to-end here since that requires network access to `ibdc.dbt.gov.in`;
 verify those against the live API in an environment with access to it.
 
 ---
-
-## Project layout
-
-```
-pyisda/
-├── pyproject.toml
-├── requirements.txt
-├── README.md
-├── LICENSE
-├── .gitignore
-├── pyisda/
-│   ├── __init__.py        # public API
-│   ├── _client.py         # shared HTTP helper, ISDA_BASE_URL, logger
-│   ├── protein.py
-│   ├── structure.py
-│   ├── mapper.py
-│   ├── mutation.py
-│   ├── sasa.py
-│   ├── visualize.py
-│   └── interactive.py
-└── tests/
-    └── test_offline.py
-```
-
 ## License
 
 MIT — see [LICENSE](LICENSE).
