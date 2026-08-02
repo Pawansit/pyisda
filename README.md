@@ -12,29 +12,6 @@ around the **IBDC ISDA REST API** (`https://ibdc.dbt.gov.in/isda/api`).
 
 ---
 
-## What changed vs. the original scripts
-
-This is a refactor, not a rewrite — the underlying logic and API endpoints
-are unchanged. What was standardized:
-
-| Area | Before | After |
-|---|---|---|
-| Naming | Mixed `PascalCase`/`camelCase`/`snake_case` (`GetResidueMap`, `Genes_Details`, `Mutated_Stru`) | Consistent `snake_case` throughout |
-| Duplication | `AFMutationTable` was defined **twice** — once correctly in `Mutation.py`, once with a broken URL (`https:ibdc.dbt.gov.in`, missing `//` and wrong host) in `Afmissense.py` | Single implementation: `mutation.get_computational_mutations` |
-| SASA structure source | `SASA.py` fetched `.pdb` files from RCSB only | Fetches `.cif` from the IBDC ISDA download endpoint by default (`source="isda"`); RCSB kept as an opt-in fallback (`source="rcsb"`) |
-| New capability | Not present in the original scripts | Added `ligand` (bound-ligand lookup, structural binding-site detection), `viewer` (MolViewSpec 3D chain visualization), `visualize`/`interactive` (static + HTML plots), `get_pdb_summary`, and `merge_experimental_with_computational`/`subset_by_positions` |
-| Errors | Inconsistent bare `print()` calls, some functions returned `None`, others returned error dicts | Consistent: functions log a warning (via the standard `logging` module, not `print`) and return `None` on failure |
-| HTTP requests | Each module duplicated its own `requests.get` + `try/except` block | Centralized in `pyisda._client.get_json`, with one configurable `ISDA_BASE_URL` |
-| Packaging | Loose `.py` files, no dependency list, no install path | Proper package (`pyproject.toml`), `pip install -e .`, pinned dependency ranges |
-| Tests | None | `tests/test_offline.py` — 10 passing unit tests for all pure-Python logic |
-| Docs | Docstrings only, inconsistent | This README + complete docstrings on every public function |
-
-No public function's *behavior* was changed — inputs/outputs match the
-originals (aside from the `Afmissense.py` bug fix and renamed dict/column
-keys made consistent, e.g. `"PDB Count"` → `"pdb_count"`).
-
----
-
 ## Installation
 
 Requires Python ≥ 3.9.
