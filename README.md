@@ -3,17 +3,6 @@
 A local, pip-installable Python toolkit for protein structural analysis built
 around the **IBDC ISDA REST API** (`https://ibdc.dbt.gov.in/isda/api`).
 
-> **Domain migration note:** IBDC has moved from `ibdc.dbtindia.gov.in` to
-> `ibdc.dbt.gov.in` and asks users to switch to the new domain. The original
-> scripts pointed at the old host — every network-backed function in this
-> package quietly returns `None` on any request failure, so a stale host
-> looks identical to "no data found." This package's default
-> `ISDA_BASE_URL` has been updated to the new domain. If you still get
-> `None` back, enable logging (see below) to see the actual cause.
-
-It wraps the six standalone scripts (`Protein.py`, `Structure.py`,
-`UniprotPDBMapper.py`, `Mutation.py`, `Afmissense.py`, `SASA.py`) into one
-cohesive, tested package: `pyisda`.
 
 - Protein/sequence lookup (`pyisda.protein`)
 - Structural (PDB) coverage details + ChimeraX mutation scripts (`pyisda.structure`)
