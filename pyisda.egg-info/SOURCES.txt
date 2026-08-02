@@ -4,11 +4,13 @@ pyproject.toml
 pyisda/__init__.py
 pyisda/_client.py
 pyisda/interactive.py
+pyisda/ligand.py
 pyisda/mapper.py
 pyisda/mutation.py
 pyisda/protein.py
 pyisda/sasa.py
 pyisda/structure.py
+pyisda/viewer.py
 pyisda/visualize.py
 pyisda.egg-info/PKG-INFO
 pyisda.egg-info/SOURCES.txt

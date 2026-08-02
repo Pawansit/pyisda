@@ -34,7 +34,7 @@ def _require_molviewspec():
 def _structure_download_url(pdb_id: str, source: str = "isda") -> str:
     pdb_id_lower = pdb_id.lower()
     if source == "isda":
-        return f"{ISDA_BASE_URL}/download.{pdb_id_lower}.cif"
+        return f"{ISDA_BASE_URL}/download/{pdb_id_lower}.cif"
     if source == "rcsb":
         return f"https://files.rcsb.org/download/{pdb_id.upper()}.cif"
     raise ValueError(f"Unknown source '{source}'; expected 'isda' or 'rcsb'.")

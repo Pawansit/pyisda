@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: pyisda
-Version: 1.1.0
+Version: 0.1.0
 Summary: Local toolkit for protein structural analysis via the IBDC ISDA API: sequence/protein lookup, UniProt<->PDB residue mapping, mutation retrieval & analysis, ChimeraX mutation scripts, and SASA calculation.
 Author: Pawan
 License: MIT
@@ -16,9 +16,14 @@ Provides-Extra: sasa
 Requires-Dist: biotite>=0.38; extra == "sasa"
 Provides-Extra: interactive
 Requires-Dist: plotly>=5.18; extra == "interactive"
+Provides-Extra: viewer
+Requires-Dist: molviewspec>=1.0; extra == "viewer"
+Requires-Dist: ipython; extra == "viewer"
 Provides-Extra: all
 Requires-Dist: biotite>=0.38; extra == "all"
 Requires-Dist: plotly>=5.18; extra == "all"
+Requires-Dist: molviewspec>=1.0; extra == "all"
+Requires-Dist: ipython; extra == "all"
 Dynamic: license-file
 
 # pyisda
@@ -56,6 +61,7 @@ are unchanged. What was standardized:
 | Naming | Mixed `PascalCase`/`camelCase`/`snake_case` (`GetResidueMap`, `Genes_Details`, `Mutated_Stru`) | Consistent `snake_case` throughout |
 | Duplication | `AFMutationTable` was defined **twice** — once correctly in `Mutation.py`, once with a broken URL (`https:ibdc.dbt.gov.in`, missing `//` and wrong host) in `Afmissense.py` | Single implementation: `mutation.get_computational_mutations` |
 | SASA structure source | `SASA.py` fetched `.pdb` files from RCSB only | Fetches `.cif` from the IBDC ISDA download endpoint by default (`source="isda"`); RCSB kept as an opt-in fallback (`source="rcsb"`) |
+| New capability | Not present in the original scripts | Added `ligand` (bound-ligand lookup, structural binding-site detection), `viewer` (MolViewSpec 3D chain visualization), `visualize`/`interactive` (static + HTML plots), `get_pdb_summary`, and `merge_experimental_with_computational`/`subset_by_positions` |
 | Errors | Inconsistent bare `print()` calls, some functions returned `None`, others returned error dicts | Consistent: functions log a warning (via the standard `logging` module, not `print`) and return `None` on failure |
 | HTTP requests | Each module duplicated its own `requests.get` + `try/except` block | Centralized in `pyisda._client.get_json`, with one configurable `ISDA_BASE_URL` |
 | Packaging | Loose `.py` files, no dependency list, no install path | Proper package (`pyproject.toml`), `pip install -e .`, pinned dependency ranges |
@@ -79,13 +85,21 @@ pip install -e .
 ```
 
 This installs the core dependencies (`requests`, `pandas`, `numpy`,
-`matplotlib`). The SASA module depends on `biotite`, which is kept optional
-since it's heavier and not everyone needs it:
+`matplotlib`). A few modules depend on heavier optional packages, kept
+out of the core install since not everyone needs them:
+
+| Extra | Installs | Needed for |
+|---|---|---|
+| `sasa` | `biotite` | `sasa` module, `ligand.get_binding_site_residues` |
+| `interactive` | `plotly` | `interactive` module (HTML plots) |
+| `viewer` | `molviewspec`, `ipython` | `viewer` module (3D structure visualization) |
+| `all` | all of the above | everything |
 
 ```bash
-pip install -e ".[sasa]"
-# or just:
-pip install biotite
+pip install -e ".[sasa]"          # just biotite
+pip install -e ".[all]"           # everything
+# or individually:
+pip install biotite plotly molviewspec
 ```
 
 To install without `pyproject.toml`/editable mode (e.g. into a plain venv):
@@ -112,8 +126,8 @@ coverage = ibdc.get_structure_details("P00533", include_pdb_records=True)
 # Entry-level PDB summary
 pdb_info = ibdc.get_pdb_summary("6q0j", additional_outputs="micromolecular_data")
 
-# UniProt <-> PDB residue mapping
-residue_map = ibdc.get_residue_map("P00533", "1m17")
+# UniProt <-> PDB residue mapping, filtered to one chain directly
+residue_map = ibdc.get_residue_map("P00533", "1m17", auth_chain_id="A")
 
 # Mutation retrieval + analysis
 clinvar_df = ibdc.get_mutation_table("P00533", source="clinvar")
@@ -123,6 +137,39 @@ summary = ibdc.get_mutation_summary(clinvar_df)
 # SASA (requires the `sasa` extra / biotite installed)
 # Downloads the structure as .cif from the ISDA API by default
 result = ibdc.calculate_sasa_for_chain("6gel", "A")
+```
+
+### Worked example: focusing on a binding-site residue set
+
+Combine experimental (ClinVar) and computational (AlphaMissense-style)
+mutation sources into one table, then narrow it down to a specific
+residue set — e.g. a ligand-binding site:
+
+```python
+import pyisda as ibdc
+
+uniprot_id = "P00533"
+
+# 1. Structural coverage -> pick the best-covered PDB + its chain
+coverage = ibdc.get_structure_details(uniprot_id, include_pdb_records=True)
+best_pdb = coverage["highest_coverage_pdb_id"]
+chain_id = coverage["highest_coverage_auth_chain"]
+
+# 2. Residue map, filtered to that chain directly
+residue_map = ibdc.get_residue_map(uniprot_id, best_pdb, auth_chain_id=chain_id)
+
+# 3. Experimental + computational mutation sources
+clinvar_df = ibdc.get_mutation_table(uniprot_id, source="clinvar", record_type="full")
+annotated_mutations = ibdc.analyze_mutation_properties(clinvar_df)
+comp_predictions = ibdc.get_computational_mutations(uniprot_id)
+
+# 4. Attach a computational pathogenicity prediction to each experimental
+#    mutation, matched on the exact substitution (position + alt AA)
+combined = ibdc.merge_experimental_with_computational(annotated_mutations, comp_predictions)
+
+# 5. Narrow down to a residue set of interest, e.g. ligand-binding-site residues
+binding_site_residues = [790, 793, 797, 855, 858]  # example UniProt positions
+focus_set = ibdc.subset_by_positions(combined, binding_site_residues)
 ```
 
 ---
@@ -156,7 +203,7 @@ mutated_seq = ibdc.mutate_sequence(seq_record, muts)
 
 | Function | Description |
 |---|---|
-| `get_residue_map(uniprot_id, pdb_id)` | List of `{unp_residue, pdb_residue, pdb_auth_chain, pdb_chain}` dicts mapping UniProt numbering to PDB numbering for one PDB entry |
+| `get_residue_map(uniprot_id, pdb_id, auth_chain_id=None)` | List of `{unp_residue, pdb_residue, pdb_auth_chain, pdb_chain}` dicts mapping UniProt numbering to PDB numbering for one PDB entry. Pass `auth_chain_id` (e.g. `"A"`) to filter to that chain directly — records for other chains are skipped before the map is even built, equivalent to but more efficient than fetching everything and then `df[df['pdb_auth_chain'] == chain_id]` |
 
 ### `pyisda.mutation`
 
@@ -167,7 +214,9 @@ mutated_seq = ibdc.mutate_sequence(seq_record, muts)
 | `filter_by_significance(df, pattern, case=False)` | Regex filter on `Clinical Significance` |
 | `analyze_mutation_properties(df, ...)` | Adds hydrophobic/hydrophilic property columns + change-type label |
 | `get_mutation_summary(df, top_n=10)` | Count, significance distribution, consequence-type distribution, top mutation hotspots |
-| `merge_mutations_with_pdb_map(mutation_df, residue_map_df)` | Joins a mutation table to `get_residue_map` output on residue position |
+| `merge_mutations_with_pdb_map(mutation_df, residue_map_df)` | Joins a mutation table to `get_residue_map` output on residue position, to attach PDB-numbered residue coordinates. Works even when `residue_map_df` is a filtered slice (e.g. one chain). **Not** for joining two mutation tables to each other — pass a `get_residue_map`-shaped DataFrame (must contain `unp_residue`) or it raises a clear `ValueError` pointing you at `merge_experimental_with_computational` instead |
+| `merge_experimental_with_computational(experimental_df, computational_df, position_col="Position", alt_aa_col="Alt_AA", how="left")` | Attaches AlphaMissense-style computational pathogenicity predictions to each experimental/clinical mutation, joined on the exact substitution (position + alt AA). Handles the 1-letter vs. 3-letter `Alt_AA` mismatch between `get_mutation_table` and `get_computational_mutations` automatically |
+| `subset_by_positions(df, positions, position_col="Position")` | Filters any mutation/merged table down to a specific set of residue positions — e.g. a ligand-binding-site residue list — to focus downstream analysis on that region |
 | `plot_mutation_matrix(df, ax=None)` | Position × Alt_AA heatmap of mutation counts |
 
 ### `pyisda.sasa`
@@ -176,10 +225,68 @@ mutated_seq = ibdc.mutate_sequence(seq_record, muts)
 |---|---|
 | `calculate_sasa_for_chain(pdb_id, chain_id, probe_radius=1.4, local_pdb_path=None, source="isda")` | Per-residue SASA via biotite. By default (`source="isda"`) downloads the structure as `.cif` from the IBDC ISDA download endpoint (`{ISDA_BASE_URL}/download.<pdb_id>.cif`), which replaces the previous RCSB-only fetch; pass `source="rcsb"` to fall back to fetching a `.pdb` file from RCSB instead, or `local_pdb_path` to use a file you already have (`.cif` or `.pdb`, detected by extension). Returns a `SASAResult(residue_ids, residue_names, sasa_per_residue)` namedtuple, or `None` on error |
 | `fetch_structure_cif(pdb_id, output_dir=".")` | Just the download step: fetches `{ISDA_BASE_URL}/download.<pdb_id>.cif` and saves it locally, returning the file path. Used internally by `calculate_sasa_for_chain`, but also handy standalone (e.g. as the input structure for `generate_mutated_structure_script`) |
+| `fetch_structure_array(pdb_id, local_pdb_path=None, source="isda")` | Fetch + parse a structure into a biotite `AtomArray` in one call. The shared building block behind `calculate_sasa_for_chain` and `ligand.get_binding_site_residues` |
+
+### `pyisda.ligand` — bound ligands & binding-site residues
+
+| Function | Description |
+|---|---|
+| `get_bound_ligands(pdb_id, chain_id=None)` | Bound small-molecule (ligand/HET) info for a PDB entry, via the ISDA `pdb_summary` endpoint's `micromolecular_data` output. Pass `chain_id` to filter to one chain. This endpoint's exact schema isn't otherwise documented, so the lookup is deliberately permissive — it checks a handful of likely list/chain-field key names and falls back to returning the raw response (with a logged warning) if none match, rather than silently returning nothing |
+| `get_binding_site_residues(pdb_id, chain_id, ligand_id, cutoff=5.0, local_pdb_path=None, source="isda")` | Structural binding-site/pocket detection: fetches the real 3D structure (via `sasa.fetch_structure_array`, same `source="isda"`/`"rcsb"`/`local_pdb_path` options as `calculate_sasa_for_chain`) and returns every amino-acid residue with any atom within `cutoff` Å of the named ligand in the given chain. Requires the `sasa` extra (biotite) |
+
+```python
+import pyisda as ibdc
+
+# What's bound in this entry, and specifically in chain A?
+ligands = ibdc.get_bound_ligands("6q0j", chain_id="A")
+
+# Residues lining the pocket around a specific ligand instance
+pocket = ibdc.get_binding_site_residues("6q0j", chain_id="A", ligand_id="02J", cutoff=5.0)
+```
+
+Each `pocket` entry is `{chain_id, residue_id, residue_name, min_distance}`,
+sorted by chain then residue ID — feed the `residue_id` values straight
+into `mutation.subset_by_positions` to focus a mutation analysis on the
+binding site.
+
+### `pyisda.viewer` — 3D structure visualization (MolViewSpec)
+
+Renders only the chain(s) you ask for — everything else is left out of
+the scene, not just hidden — using [MolViewSpec](https://molstar.org/mol-view-spec/)
+declarative view specs rendered by Mol*. Requires the `viewer` extra:
+
+```bash
+pip install -e ".[viewer]"   # installs molviewspec (+ ipython for notebook rendering)
+```
+
+| Function | Description |
+|---|---|
+| `show_structure_chains(pdb_id, chain_ids, source="isda", colors=None, background_color=None, width=950, height=600)` | Renders inline in a Jupyter/Colab cell as a side effect (via `IPython.display`) — call it and the viewer just appears, nothing to do with a return value |
+| `build_chain_view(pdb_id, chain_ids, source="isda", colors=None, background_color=None)` | Builds and returns the underlying `molviewspec` state without rendering it — for saving, inspecting, or further customizing before display |
+| `save_structure_html(pdb_id, chain_ids, path, source="isda", colors=None, background_color=None)` | Saves a standalone HTML file (no Jupyter/IPython needed) — open it in any browser |
+
+```python
+import pyisda as ibdc
+
+# Inline in a notebook — one call, viewer just appears in the cell output
+ibdc.show_structure_chains("6q0j", ["A", "B"])
+
+# Or save a standalone HTML file
+ibdc.save_structure_html("6q0j", ["A", "B"], "structure_view.html")
+```
+
+`chain_ids` accepts a single chain (`"A"`) or a list (`["A", "B"]`), and
+is matched against `auth_asym_id` — the same chain identifiers used
+throughout the rest of this package (`pdb_auth_chain` from
+`get_residue_map`, `auth_chain_id` in `generate_mutated_structure_script`,
+`chain_id` in `calculate_sasa_for_chain`, etc). Structures are fetched
+client-side by Mol* from the same `source="isda"`/`"rcsb"` endpoints used
+elsewhere; the download doesn't happen in Python.
 
 ### `pyisda.visualize`
 
 Turns the outputs of the other modules into residue-position tracks —
+
 the kind of coverage/lollipop/profile views you'd see on UniProt or PDBe.
 
 | Function | Description |
@@ -341,8 +448,10 @@ pyisda/
 │   ├── mapper.py
 │   ├── mutation.py
 │   ├── sasa.py
+│   ├── ligand.py
 │   ├── visualize.py
-│   └── interactive.py
+│   ├── interactive.py
+│   └── viewer.py
 └── tests/
     └── test_offline.py
 ```

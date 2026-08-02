@@ -6,9 +6,15 @@ matplotlib>=3.6
 [all]
 biotite>=0.38
 plotly>=5.18
+molviewspec>=1.0
+ipython
 
 [interactive]
 plotly>=5.18
 
 [sasa]
 biotite>=0.38
+
+[viewer]
+molviewspec>=1.0
+ipython
