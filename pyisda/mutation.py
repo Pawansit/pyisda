@@ -20,8 +20,8 @@ from ._client import ISDA_BASE_URL, ISDARequestError, get_json, logger
 _CLINICAL_AA_PATTERN = r"p\.(?P<Ref_AA>[A-Z][a-z]{2})(?P<Position>\d+)(?P<Alt_AA>[A-Z][a-z]{2}|\*)"
 _COMPUTATIONAL_AA_PATTERN = r"^([A-Z])(\d+)([A-Z])$"
 
-DEFAULT_HYDROPHOBIC_AAS = ["Gly", "Ala", "Val", "Leu", "Ile", "Pro", "Phe", "Trp", "Met", "Cys"]
-DEFAULT_HYDROPHILIC_AAS = ["Ser", "Thr", "Tyr", "Asn", "Gln", "Asp", "Glu", "Lys", "Arg", "His", "*"]
+DEFAULT_HYDROPHOBIC_AAS = ["Ala", "Val", "Leu", "Ile", "Pro", "Phe", "Trp", "Met", "Cys"]
+DEFAULT_HYDROPHILIC_AAS = ["Gly", "Ser", "Thr", "Tyr", "Asn", "Gln", "Asp", "Glu", "Lys", "Arg", "His", "*"]
 
 
 def get_mutation_table(

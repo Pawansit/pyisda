@@ -42,7 +42,7 @@ def fetch_structure_cif(pdb_id: str, output_dir: str = ".") -> str:
             empty response body.
     """
     pdb_id_lower = pdb_id.lower()
-    url = f"{ISDA_BASE_URL}/download/{pdb_id_lower}.cif"
+    url = f"{ISDA_BASE_URL}/download.{pdb_id_lower}.cif"
     os.makedirs(output_dir, exist_ok=True)
     dest_path = os.path.join(output_dir, f"{pdb_id_lower}.cif")
     return download_file(url, dest_path)
@@ -60,6 +60,46 @@ def _read_structure_file(file_path: str, model: int = 1):
     from biotite.structure.io import pdb as pdb_io
     pdb_file = pdb_io.PDBFile.read(file_path)
     return pdb_file.get_structure(model=model)
+
+
+def fetch_structure_array(
+    pdb_id: str,
+    local_pdb_path: Optional[str] = None,
+    source: str = "isda",
+):
+    """
+    Fetch (unless `local_pdb_path` is given) and parse a structure into a
+    biotite AtomArray. Shared by `calculate_sasa_for_chain` and other
+    structure-consuming functions elsewhere in the package.
+
+    Args:
+        pdb_id: 4-character PDB accession, e.g. "6gel".
+        local_pdb_path: Optional path to a local structure file (.cif or
+            .pdb). If given, this is used and `source` is ignored.
+        source: Where to fetch the structure from when `local_pdb_path`
+            is not given: "isda" (default) downloads a `.cif` from the
+            IBDC ISDA API; "rcsb" falls back to fetching a `.pdb` file
+            from RCSB.
+
+    Returns:
+        A biotite `AtomArray`.
+
+    Raises:
+        ISDARequestError: on a network/HTTP failure while fetching.
+        ValueError: for an unknown `source`.
+        Exception: whatever biotite raises for an unreadable file.
+    """
+    if local_pdb_path:
+        file_path = local_pdb_path
+    elif source == "rcsb":
+        import biotite.database.rcsb as rcsb
+        file_path = rcsb.fetch(pdb_id, "pdb", os.getcwd())
+    elif source == "isda":
+        file_path = fetch_structure_cif(pdb_id, os.getcwd())
+    else:
+        raise ValueError(f"Unknown source '{source}'; expected 'isda' or 'rcsb'.")
+
+    return _read_structure_file(file_path)
 
 
 def calculate_sasa_for_chain(
@@ -93,17 +133,7 @@ def calculate_sasa_for_chain(
     import biotite.structure as struc
 
     try:
-        if local_pdb_path:
-            file_path = local_pdb_path
-        elif source == "rcsb":
-            import biotite.database.rcsb as rcsb
-            file_path = rcsb.fetch(pdb_id, "pdb", os.getcwd())
-        elif source == "isda":
-            file_path = fetch_structure_cif(pdb_id, os.getcwd())
-        else:
-            raise ValueError(f"Unknown source '{source}'; expected 'isda' or 'rcsb'.")
-
-        array = _read_structure_file(file_path)
+        array = fetch_structure_array(pdb_id, local_pdb_path=local_pdb_path, source=source)
     except ISDARequestError as exc:
         logger.warning("Error fetching structure %s from %s: %s", pdb_id, source, exc)
         return None

@@ -42,7 +42,8 @@ from .mutation import (
     subset_by_positions,
     plot_mutation_matrix,
 )
-from .sasa import calculate_sasa_for_chain, fetch_structure_cif, SASAResult
+from .sasa import calculate_sasa_for_chain, fetch_structure_cif, fetch_structure_array, SASAResult
+from .ligand import get_bound_ligands, get_binding_site_residues
 from .visualize import (
     plot_structural_coverage,
     plot_mutation_lollipop,
@@ -55,6 +56,11 @@ from .interactive import (
     plot_sasa_profile_html,
     plot_protein_overview_html,
     save_html,
+)
+from .viewer import (
+    build_chain_view,
+    show_structure_chains,
+    save_structure_html,
 )
 
 __version__ = "0.1.0"
@@ -81,7 +87,10 @@ __all__ = [
     "plot_mutation_matrix",
     "calculate_sasa_for_chain",
     "fetch_structure_cif",
+    "fetch_structure_array",
     "SASAResult",
+    "get_bound_ligands",
+    "get_binding_site_residues",
     "plot_structural_coverage",
     "plot_mutation_lollipop",
     "plot_sasa_profile",
@@ -91,4 +100,7 @@ __all__ = [
     "plot_sasa_profile_html",
     "plot_protein_overview_html",
     "save_html",
+    "build_chain_view",
+    "show_structure_chains",
+    "save_structure_html",
 ]

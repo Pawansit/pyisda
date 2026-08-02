@@ -22,7 +22,8 @@ dependencies = [
 [project.optional-dependencies]
 sasa = ["biotite>=0.38"]
 interactive = ["plotly>=5.18"]
-all = ["biotite>=0.38", "plotly>=5.18"]
+viewer = ["molviewspec>=1.0", "ipython"]
+all = ["biotite>=0.38", "plotly>=5.18", "molviewspec>=1.0", "ipython"]
 
 [tool.setuptools.packages.find]
 include = ["pyisda*"]

@@ -249,6 +249,152 @@ def test_save_html_writes_file(tmp_path):
     assert out.stat().st_size > 0
 
 
+def _count_nodes(node, kind):
+    n = 1 if node.get("kind") == kind else 0
+    for child in node.get("children") or []:
+        n += _count_nodes(child, kind)
+    return n
+
+
+def test_build_chain_view_uses_isda_url_and_one_component_per_chain():
+    pytest.importorskip("molviewspec")
+    builder = ibdc.build_chain_view("6q0j", ["A", "B", "C"])
+    root = builder.get_state().model_dump()["root"]
+
+    assert root["children"][0]["params"]["url"] == "https://ibdc.dbt.gov.in/isda/api/download.6q0j.cif"
+    assert _count_nodes(root, "component") == 3
+
+
+def test_build_chain_view_accepts_single_chain_string():
+    pytest.importorskip("molviewspec")
+    builder = ibdc.build_chain_view("6q0j", "A")
+    root = builder.get_state().model_dump()["root"]
+    assert _count_nodes(root, "component") == 1
+
+
+def test_build_chain_view_rcsb_source():
+    pytest.importorskip("molviewspec")
+    builder = ibdc.build_chain_view("6gel", "A", source="rcsb")
+    root = builder.get_state().model_dump()["root"]
+    assert root["children"][0]["params"]["url"] == "https://files.rcsb.org/download/6GEL.cif"
+
+
+def test_build_chain_view_requires_at_least_one_chain():
+    pytest.importorskip("molviewspec")
+    with pytest.raises(ValueError):
+        ibdc.build_chain_view("6q0j", [])
+
+
+def test_save_structure_html_writes_file(tmp_path):
+    pytest.importorskip("molviewspec")
+    out = tmp_path / "structure.html"
+    path = ibdc.save_structure_html("6q0j", ["A", "B"], str(out))
+    assert path == str(out)
+    assert out.exists()
+    assert out.stat().st_size > 0
+
+
+def test_get_bound_ligands_all_and_filtered_by_chain(monkeypatch):
+    import pyisda.structure as structure_mod
+
+    fake_summary = {
+        "micromolecular_data": [
+            {"auth_asym_id": "A", "comp_id": "NAG"},
+            {"auth_asym_id": "B", "comp_id": "ZN"},
+            {"auth_asym_id": "A", "comp_id": "02J"},
+        ]
+    }
+    monkeypatch.setattr(structure_mod, "get_json", lambda url, **kw: fake_summary)
+
+    all_ligands = ibdc.get_bound_ligands("6q0j")
+    assert len(all_ligands) == 3
+
+    chain_a = ibdc.get_bound_ligands("6q0j", chain_id="A")
+    assert [r["comp_id"] for r in chain_a] == ["NAG", "02J"]
+
+
+def test_get_bound_ligands_returns_none_on_failure(monkeypatch):
+    import pyisda.structure as structure_mod
+    from pyisda._client import ISDARequestError
+
+    def fake_get_json(url, **kw):
+        raise ISDARequestError("boom")
+
+    monkeypatch.setattr(structure_mod, "get_json", fake_get_json)
+    assert ibdc.get_bound_ligands("6q0j") is None
+
+
+def test_get_bound_ligands_falls_back_to_raw_response_when_schema_unrecognized(monkeypatch):
+    import pyisda.structure as structure_mod
+    unrecognized = {"something_else": [1, 2, 3]}
+    monkeypatch.setattr(structure_mod, "get_json", lambda url, **kw: unrecognized)
+    result = ibdc.get_bound_ligands("6q0j")
+    assert result == unrecognized
+
+
+def _write_synthetic_cif(path):
+    """A tiny 3-residue protein chain + one ligand residue, for offline binding-site tests."""
+    biotite_structure = pytest.importorskip("biotite.structure")
+    pdbx = pytest.importorskip("biotite.structure.io.pdbx")
+    import numpy as np
+
+    coords = np.array([
+        [0.0, 0.0, 0.0],   # res 1 CA
+        [5.0, 0.0, 0.0],   # res 2 CA (near ligand)
+        [20.0, 0.0, 0.0],  # res 3 CA (far from ligand)
+        [6.0, 0.0, 0.0],   # ligand atom
+    ], dtype=float)
+
+    array = biotite_structure.AtomArray(4)
+    array.coord = coords
+    array.chain_id = np.array(["A", "A", "A", "A"])
+    array.res_id = np.array([1, 2, 3, 1])
+    array.res_name = np.array(["ALA", "GLY", "SER", "LIG"])
+    array.atom_name = np.array(["CA", "CA", "CA", "C1"])
+    array.element = np.array(["C", "C", "C", "C"])
+    array.hetero = np.array([False, False, False, True])
+
+    cif_file = pdbx.CIFFile()
+    pdbx.set_structure(cif_file, array)
+    cif_file.write(str(path))
+
+
+def test_get_binding_site_residues_finds_only_nearby_residue(tmp_path):
+    pytest.importorskip("biotite")
+    cif_path = tmp_path / "synthetic.cif"
+    _write_synthetic_cif(cif_path)
+
+    result = ibdc.get_binding_site_residues(
+        "synthetic", "A", "LIG", cutoff=3.0, local_pdb_path=str(cif_path)
+    )
+    assert len(result) == 1
+    assert result[0]["residue_id"] == 2
+    assert result[0]["residue_name"] == "GLY"
+    assert result[0]["min_distance"] == 1.0
+
+
+def test_get_binding_site_residues_wider_cutoff_includes_more_residues(tmp_path):
+    pytest.importorskip("biotite")
+    cif_path = tmp_path / "synthetic.cif"
+    _write_synthetic_cif(cif_path)
+
+    result = ibdc.get_binding_site_residues(
+        "synthetic", "A", "LIG", cutoff=10.0, local_pdb_path=str(cif_path)
+    )
+    assert {r["residue_id"] for r in result} == {1, 2}
+
+
+def test_get_binding_site_residues_ligand_not_found(tmp_path):
+    pytest.importorskip("biotite")
+    cif_path = tmp_path / "synthetic.cif"
+    _write_synthetic_cif(cif_path)
+
+    result = ibdc.get_binding_site_residues(
+        "synthetic", "A", "NOPE", local_pdb_path=str(cif_path)
+    )
+    assert result == []
+
+
 def test_fetch_structure_cif_builds_correct_url(tmp_path, monkeypatch):
     import pyisda.sasa as sasa_mod
 

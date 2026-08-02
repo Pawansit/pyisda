@@ -1,17 +1,48 @@
 # pyisda
 
-A local, pip-installable Python toolkit for protein structural and mutational analysis built
-around the **IBDC ISDA REST API** (`https://ibdc.dbt.gov.in/isda/api/documentation/`).
+A local, pip-installable Python toolkit for protein structural analysis built
+around the **IBDC ISDA REST API** (`https://ibdc.dbt.gov.in/isda/api`).
 
 > **Domain migration note:** IBDC has moved from `ibdc.dbtindia.gov.in` to
-> `ibdc.dbt.gov.in` and asks users to switch to the new domain. 
+> `ibdc.dbt.gov.in` and asks users to switch to the new domain. The original
+> scripts pointed at the old host — every network-backed function in this
+> package quietly returns `None` on any request failure, so a stale host
+> looks identical to "no data found." This package's default
+> `ISDA_BASE_URL` has been updated to the new domain. If you still get
+> `None` back, enable logging (see below) to see the actual cause.
 
+It wraps the six standalone scripts (`Protein.py`, `Structure.py`,
+`UniprotPDBMapper.py`, `Mutation.py`, `Afmissense.py`, `SASA.py`) into one
+cohesive, tested package: `pyisda`.
 
 - Protein/sequence lookup (`pyisda.protein`)
 - Structural (PDB) coverage details + ChimeraX mutation scripts (`pyisda.structure`)
 - UniProt ⇄ PDB residue-numbering mapping (`pyisda.mapper`)
 - Clinical + computational (AlphaMissense-style) mutation retrieval and analysis (`pyisda.mutation`)
 - Per-residue SASA calculation via biotite (`pyisda.sasa`)
+
+---
+
+## What changed vs. the original scripts
+
+This is a refactor, not a rewrite — the underlying logic and API endpoints
+are unchanged. What was standardized:
+
+| Area | Before | After |
+|---|---|---|
+| Naming | Mixed `PascalCase`/`camelCase`/`snake_case` (`GetResidueMap`, `Genes_Details`, `Mutated_Stru`) | Consistent `snake_case` throughout |
+| Duplication | `AFMutationTable` was defined **twice** — once correctly in `Mutation.py`, once with a broken URL (`https:ibdc.dbt.gov.in`, missing `//` and wrong host) in `Afmissense.py` | Single implementation: `mutation.get_computational_mutations` |
+| SASA structure source | `SASA.py` fetched `.pdb` files from RCSB only | Fetches `.cif` from the IBDC ISDA download endpoint by default (`source="isda"`); RCSB kept as an opt-in fallback (`source="rcsb"`) |
+| New capability | Not present in the original scripts | Added `ligand` (bound-ligand lookup, structural binding-site detection), `viewer` (MolViewSpec 3D chain visualization), `visualize`/`interactive` (static + HTML plots), `get_pdb_summary`, and `merge_experimental_with_computational`/`subset_by_positions` |
+| Errors | Inconsistent bare `print()` calls, some functions returned `None`, others returned error dicts | Consistent: functions log a warning (via the standard `logging` module, not `print`) and return `None` on failure |
+| HTTP requests | Each module duplicated its own `requests.get` + `try/except` block | Centralized in `pyisda._client.get_json`, with one configurable `ISDA_BASE_URL` |
+| Packaging | Loose `.py` files, no dependency list, no install path | Proper package (`pyproject.toml`), `pip install -e .`, pinned dependency ranges |
+| Tests | None | `tests/test_offline.py` — 10 passing unit tests for all pure-Python logic |
+| Docs | Docstrings only, inconsistent | This README + complete docstrings on every public function |
+
+No public function's *behavior* was changed — inputs/outputs match the
+originals (aside from the `Afmissense.py` bug fix and renamed dict/column
+keys made consistent, e.g. `"PDB Count"` → `"pdb_count"`).
 
 ---
 
@@ -26,13 +57,21 @@ pip install -e .
 ```
 
 This installs the core dependencies (`requests`, `pandas`, `numpy`,
-`matplotlib`). The SASA module depends on `biotite`, which is kept optional
-since it's heavier and not everyone needs it:
+`matplotlib`). A few modules depend on heavier optional packages, kept
+out of the core install since not everyone needs them:
+
+| Extra | Installs | Needed for |
+|---|---|---|
+| `sasa` | `biotite` | `sasa` module, `ligand.get_binding_site_residues` |
+| `interactive` | `plotly` | `interactive` module (HTML plots) |
+| `viewer` | `molviewspec`, `ipython` | `viewer` module (3D structure visualization) |
+| `all` | all of the above | everything |
 
 ```bash
-pip install -e ".[sasa]"
-# or just:
-pip install biotite
+pip install -e ".[sasa]"          # just biotite
+pip install -e ".[all]"           # everything
+# or individually:
+pip install biotite plotly molviewspec
 ```
 
 To install without `pyproject.toml`/editable mode (e.g. into a plain venv):
@@ -67,7 +106,8 @@ clinvar_df = ibdc.get_mutation_table("P00533", source="clinvar")
 annotated = ibdc.analyze_mutation_properties(clinvar_df)
 summary = ibdc.get_mutation_summary(clinvar_df)
 
-# Calculate per residue Solvent Accessible Surface Area (SASA)
+# SASA (requires the `sasa` extra / biotite installed)
+# Downloads the structure as .cif from the ISDA API by default
 result = ibdc.calculate_sasa_for_chain("6gel", "A")
 ```
 
@@ -115,7 +155,7 @@ focus_set = ibdc.subset_by_positions(combined, binding_site_residues)
 | `get_protein_details(uniprot_id)` | Organism, gene name(s)/synonyms, structural record count, sequence length |
 | `get_sequence(uniprot_id)` | Raw sequence string, length, molecular weight |
 | `mutate_sequence(sequence_record, mutations)` | Apply a `Position`/`Alt_AA` (3-letter code) mutation table to a sequence, returns the mutated sequence string |
-
+| `one_letter_to_three(aa)` / `three_letter_to_one(aa)` | Amino-acid code conversion helpers |
 
 ```python
 seq_record = ibdc.get_sequence("P00533")
@@ -128,14 +168,14 @@ mutated_seq = ibdc.mutate_sequence(seq_record, muts)
 | Function | Description |
 |---|---|
 | `get_structure_details(uniprot_id, include_pdb_records=False)` | PDB/chain counts and the highest-coverage structure; pass `include_pdb_records=True` for the full per-PDB record list |
-| `get_pdb_summary(pdb_id, additional_outputs=None)` | Entry-level summary for a single PDB ID (`{ISDA_BASE_URL}/pdb_summary/<pdb_id>/)`.`additional_outputs`  also accepts a list, joined with commas and cover the following `experiment, publication, micromolecular_data, interactions`. |
+| `get_pdb_summary(pdb_id, additional_outputs=None)` | Entry-level summary for a single PDB ID (`{ISDA_BASE_URL}/pdb_summary/<pdb_id>/`), e.g. `get_pdb_summary("6q0j", additional_outputs="micromolecular_data")`. Returns the raw JSON dict as-is — this endpoint's schema isn't otherwise documented, so inspect `.keys()` on the result. `additional_outputs` also accepts a list, joined with commas |
 | `generate_mutated_structure_script(mutation_table, pdb_id, auth_chain_id, output_dir=".")` | Writes a ChimeraX `.cxc` script that opens `<pdb_id>.cif`, applies `swapaa` mutations for the given chain, and saves `<pdb_id>_mutated_structure.cif` |
 
 ### `pyisda.mapper`
 
 | Function | Description |
 |---|---|
-| `get_residue_map(uniprot_id, pdb_id, auth_chain_id=None)` | List of `{unp_residue, pdb_residue, pdb_auth_chain, pdb_chain}` dicts mapping UniProt numbering to PDB numbering for one PDB entry. Pass `auth_chain_id` (e.g. `"A"`) to filter to that chain directly. |
+| `get_residue_map(uniprot_id, pdb_id, auth_chain_id=None)` | List of `{unp_residue, pdb_residue, pdb_auth_chain, pdb_chain}` dicts mapping UniProt numbering to PDB numbering for one PDB entry. Pass `auth_chain_id` (e.g. `"A"`) to filter to that chain directly — records for other chains are skipped before the map is even built, equivalent to but more efficient than fetching everything and then `df[df['pdb_auth_chain'] == chain_id]` |
 
 ### `pyisda.mutation`
 
@@ -157,10 +197,68 @@ mutated_seq = ibdc.mutate_sequence(seq_record, muts)
 |---|---|
 | `calculate_sasa_for_chain(pdb_id, chain_id, probe_radius=1.4, local_pdb_path=None, source="isda")` | Per-residue SASA via biotite. By default (`source="isda"`) downloads the structure as `.cif` from the IBDC ISDA download endpoint (`{ISDA_BASE_URL}/download.<pdb_id>.cif`), which replaces the previous RCSB-only fetch; pass `source="rcsb"` to fall back to fetching a `.pdb` file from RCSB instead, or `local_pdb_path` to use a file you already have (`.cif` or `.pdb`, detected by extension). Returns a `SASAResult(residue_ids, residue_names, sasa_per_residue)` namedtuple, or `None` on error |
 | `fetch_structure_cif(pdb_id, output_dir=".")` | Just the download step: fetches `{ISDA_BASE_URL}/download.<pdb_id>.cif` and saves it locally, returning the file path. Used internally by `calculate_sasa_for_chain`, but also handy standalone (e.g. as the input structure for `generate_mutated_structure_script`) |
+| `fetch_structure_array(pdb_id, local_pdb_path=None, source="isda")` | Fetch + parse a structure into a biotite `AtomArray` in one call. The shared building block behind `calculate_sasa_for_chain` and `ligand.get_binding_site_residues` |
+
+### `pyisda.ligand` — bound ligands & binding-site residues
+
+| Function | Description |
+|---|---|
+| `get_bound_ligands(pdb_id, chain_id=None)` | Bound small-molecule (ligand/HET) info for a PDB entry, via the ISDA `pdb_summary` endpoint's `micromolecular_data` output. Pass `chain_id` to filter to one chain. This endpoint's exact schema isn't otherwise documented, so the lookup is deliberately permissive — it checks a handful of likely list/chain-field key names and falls back to returning the raw response (with a logged warning) if none match, rather than silently returning nothing |
+| `get_binding_site_residues(pdb_id, chain_id, ligand_id, cutoff=5.0, local_pdb_path=None, source="isda")` | Structural binding-site/pocket detection: fetches the real 3D structure (via `sasa.fetch_structure_array`, same `source="isda"`/`"rcsb"`/`local_pdb_path` options as `calculate_sasa_for_chain`) and returns every amino-acid residue with any atom within `cutoff` Å of the named ligand in the given chain. Requires the `sasa` extra (biotite) |
+
+```python
+import pyisda as ibdc
+
+# What's bound in this entry, and specifically in chain A?
+ligands = ibdc.get_bound_ligands("6q0j", chain_id="A")
+
+# Residues lining the pocket around a specific ligand instance
+pocket = ibdc.get_binding_site_residues("6q0j", chain_id="A", ligand_id="02J", cutoff=5.0)
+```
+
+Each `pocket` entry is `{chain_id, residue_id, residue_name, min_distance}`,
+sorted by chain then residue ID — feed the `residue_id` values straight
+into `mutation.subset_by_positions` to focus a mutation analysis on the
+binding site.
+
+### `pyisda.viewer` — 3D structure visualization (MolViewSpec)
+
+Renders only the chain(s) you ask for — everything else is left out of
+the scene, not just hidden — using [MolViewSpec](https://molstar.org/mol-view-spec/)
+declarative view specs rendered by Mol*. Requires the `viewer` extra:
+
+```bash
+pip install -e ".[viewer]"   # installs molviewspec (+ ipython for notebook rendering)
+```
+
+| Function | Description |
+|---|---|
+| `show_structure_chains(pdb_id, chain_ids, source="isda", colors=None, background_color=None, width=950, height=600)` | Renders inline in a Jupyter/Colab cell as a side effect (via `IPython.display`) — call it and the viewer just appears, nothing to do with a return value |
+| `build_chain_view(pdb_id, chain_ids, source="isda", colors=None, background_color=None)` | Builds and returns the underlying `molviewspec` state without rendering it — for saving, inspecting, or further customizing before display |
+| `save_structure_html(pdb_id, chain_ids, path, source="isda", colors=None, background_color=None)` | Saves a standalone HTML file (no Jupyter/IPython needed) — open it in any browser |
+
+```python
+import pyisda as ibdc
+
+# Inline in a notebook — one call, viewer just appears in the cell output
+ibdc.show_structure_chains("6q0j", ["A", "B"])
+
+# Or save a standalone HTML file
+ibdc.save_structure_html("6q0j", ["A", "B"], "structure_view.html")
+```
+
+`chain_ids` accepts a single chain (`"A"`) or a list (`["A", "B"]`), and
+is matched against `auth_asym_id` — the same chain identifiers used
+throughout the rest of this package (`pdb_auth_chain` from
+`get_residue_map`, `auth_chain_id` in `generate_mutated_structure_script`,
+`chain_id` in `calculate_sasa_for_chain`, etc). Structures are fetched
+client-side by Mol* from the same `source="isda"`/`"rcsb"` endpoints used
+elsewhere; the download doesn't happen in Python.
 
 ### `pyisda.visualize`
 
 Turns the outputs of the other modules into residue-position tracks —
+
 the kind of coverage/lollipop/profile views you'd see on UniProt or PDBe.
 
 | Function | Description |
@@ -251,6 +349,17 @@ telling you to install the `interactive` extra.
 
 ---
 
+## Configuration
+
+The ISDA base URL defaults to `https://ibdc.dbt.gov.in/isda/api` (the
+current domain as of July 2026) and is centralized and overridable, e.g. to
+point at a staging environment or roll back to the old host:
+
+```python
+import pyisda as ibdc
+ibdc.config.ISDA_BASE_URL = "https://staging.example.org/isda/api"
+```
+
 ## Logging
 
 All modules log through the `"pyisda"` logger instead of `print()`.
@@ -260,6 +369,18 @@ Enable it in your own scripts/notebooks with:
 import logging
 logging.basicConfig(level=logging.INFO)  # or logging.WARNING
 ```
+
+By default (no `basicConfig` call), the package stays silent — it attaches
+a `NullHandler` so it won't print anything unless you opt in.
+
+## Error handling
+
+Every network-backed function follows the same contract: on request
+failure (timeout, connection error, HTTP error, bad JSON) it logs a warning
+and returns `None` — it never raises. Internally, request failures are
+raised as `pyisda.ISDARequestError` and caught at each public
+function's boundary, so if you're extending the package yourself you can
+catch that exception directly instead of parsing log output.
 
 ---
 
@@ -281,6 +402,32 @@ end-to-end here since that requires network access to `ibdc.dbt.gov.in`;
 verify those against the live API in an environment with access to it.
 
 ---
+
+## Project layout
+
+```
+pyisda/
+├── pyproject.toml
+├── requirements.txt
+├── README.md
+├── LICENSE
+├── .gitignore
+├── pyisda/
+│   ├── __init__.py        # public API
+│   ├── _client.py         # shared HTTP helper, ISDA_BASE_URL, logger
+│   ├── protein.py
+│   ├── structure.py
+│   ├── mapper.py
+│   ├── mutation.py
+│   ├── sasa.py
+│   ├── ligand.py
+│   ├── visualize.py
+│   ├── interactive.py
+│   └── viewer.py
+└── tests/
+    └── test_offline.py
+```
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
